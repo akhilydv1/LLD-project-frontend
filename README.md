@@ -73,3 +73,7 @@ designloop-frontend/
 - The frontend shows evaluator feedback returned by the backend. It does not call Gemini directly; the API must evaluate the persisted submission and return its feedback.
 - Document/diagram file selection is handled in the browser. In API mode, files are uploaded via the attachments endpoint. In demo mode, only file metadata is retained in browser storage, not the file bytes.
 - The starter problem cards are fallback/demo content. When API mode is enabled, the list is loaded from `GET /api/v1/problems` when available.
+- ## Project Repositories
+
+- **Frontend (React + Vite):** https://github.com/akhilydv1/LLD-project-frontend
+- **Backend (Spring Boot):** https://github.com/akhilydv1/LLD-backendfinal
