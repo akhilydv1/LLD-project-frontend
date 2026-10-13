@@ -1,4 +1,8 @@
 # DesignLoop — LLD Practice Frontend
+## Project Repositories
+
+- **Frontend (React + Vite):** https://github.com/akhilydv1/LLD-project-frontend
+- **Backend (Spring Boot):** https://github.com/akhilydv1/LLD-backendfinal
 
 A simple, responsive React + Vite UI for a Low-Level Design practice platform. It supports three learner input options—**Text, Document, and Diagram**—plus a Combined mode for using more than one type of evidence.
 
@@ -75,5 +79,3 @@ designloop-frontend/
 - The starter problem cards are fallback/demo content. When API mode is enabled, the list is loaded from `GET /api/v1/problems` when available.
 - ## Project Repositories
 
-- **Frontend (React + Vite):** https://github.com/akhilydv1/LLD-project-frontend
-- **Backend (Spring Boot):** https://github.com/akhilydv1/LLD-backendfinal
