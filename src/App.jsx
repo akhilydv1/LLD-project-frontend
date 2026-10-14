@@ -189,7 +189,7 @@ function App() {
     if (API_ENABLED) {
       const raw = await api.createAttempt(selectedProblem.id, mode);
       const id = raw?.id || raw?.attemptId;
-      if (!id) throw new Error('Attempt create hua, lekin response mein id/attemptId nahi mila. Backend API contract check karo.');
+      if (!id) throw new Error('The attempt was created, but the server did not return an attempt ID. Please check the backend API response.');
       setAttemptId(id);
       setRevision(raw.revision ?? 0);
       return id;
@@ -264,52 +264,51 @@ function App() {
     finally { setBusy(false); }
   }
 
-  async function handleSubmit(event) {
-    event?.preventDefault();
-    if (busy) return;
-    setBusy(true); setApiError(''); setStatusMessage('');
-    try {
-      const savedEntry = await persistDraft(true);
-      const id = savedEntry?.id || attemptId || selectedAttempt?.id;
-      if (API_ENABLED) {
-        const submitted = await api.submitAttempt(id);
-        setCurrentServerAttempt(submitted);
-        let current = null;
-        try { current = await api.getAttempt(id); } catch { /* status endpoint can be checked later */ }
-        let feedback = current?.feedback || null;
-        if (!feedback) {
-          try {
-            const fbResponse = await api.getFeedback(id);
-            feedback = fbResponse?.feedback || (fbResponse?.provider ? fbResponse : null);
-          } catch { /* evaluation may still be running */ }
-        }
-        const normalized = normalizeAttempt(current || submitted, localAttempt(id, submitted?.status || 'SUBMITTED'));
-        normalized.status = current?.status || submitted?.status || 'SUBMITTED';
-        normalized.feedback = feedback;
-        setAttempts(prev => [normalized, ...prev.filter(a => a.id !== id)]);
-        setSelectedAttempt(normalized);
-        setCurrentFeedback(feedback);
-        setCurrentServerAttempt(current || submitted);
-        setStatusMessage(normalized.status);
-        if (feedback?.assessmentType === 'READINESS_ONLY' || feedback?.provider === 'RULES') {
-          setToast({ type: 'warning', message: 'Submission complete, lekin API abhi rules/readiness feedback return kar rahi hai.' });
-        } else {
-          setToast({ type: 'success', message: 'Submission backend par chali gayi.' });
-        }
-      } else {
-        const normalized = localAttempt(id, 'SUBMITTED');
-        setAttempts(prev => [normalized, ...prev.filter(a => a.id !== id)]);
-        setSelectedAttempt(normalized);
-        setStatusMessage('SUBMITTED');
-        setCurrentFeedback(null);
-        setToast({ type: 'success', message: 'Demo submission stored locally. Connect the backend for AI feedback.' });
-      }
-      go('feedback');
-    } catch (error) {
-      setToast({ type: 'error', message: displayApiError(error) });
-      if (API_ENABLED) setApiError(displayApiError(error));
-    } finally { setBusy(false); }
+  
+async function handleSubmit() {
+  try {
+    setLoading(true);
+
+    const id = await ensureAttempt();
+
+    if (API_ENABLED) {
+      const artifact = buildArtifact();
+      const saved = await api.saveDraft(id, revision, artifact);
+
+      setRevision(saved?.revision ?? revision);
+
+      await api.submitAttempt(id);
+
+      const latest = await api.getAttempt(id);
+      const normalized = normalizeAttempt(latest);
+
+      setAttempts((prev) => ({
+        ...prev,
+        [id]: normalized,
+      }));
+
+      setFeedback(
+        normalized.status === "COMPLETED"
+          ? normalized.feedback ?? null
+          : null
+      );
+
+      setToast(
+        "Your submission was received successfully. Evaluation may take some time."
+      );
+    } else {
+      setToast(
+        "Live AI feedback is unavailable in demo mode."
+      );
+    }
+
+    go("feedback");
+  } catch (error) {
+    setToast(displayApiError(error));
+  } finally {
+    setLoading(false);
   }
+}
 
   async function retryEvaluation(attempt) {
     const target = attempt || selectedAttempt;
@@ -333,29 +332,51 @@ function App() {
     } finally { setBusy(false); }
   }
 
-  async function refreshFeedback(attempt) {
-    const target = attempt || selectedAttempt;
-    if (!target?.id) return;
-    if (!API_ENABLED) {
-      setToast({ type: 'info', message: 'Local demo mode mein live AI feedback available nahi hai.' });
+ 
+async function refreshFeedback() {
+  if (!API_ENABLED || !attemptId) {
+    setToast("Live feedback is unavailable in demo mode.");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    const latest = await api.getAttempt(attemptId);
+    const normalized = normalizeAttempt(latest);
+
+    setAttempts((prev) => ({
+      ...prev,
+      [attemptId]: normalized,
+    }));
+
+    if (normalized.status !== "COMPLETED") {
+      setFeedback(null);
+      setToast(
+        "Evaluation is still in progress. Please check again shortly."
+      );
       return;
     }
-    setBusy(true);
-    try {
-      const current = await api.getAttempt(target.id);
-      let feedback = current?.feedback || null;
-      if (!feedback) {
-        try { const raw = await api.getFeedback(target.id); feedback = raw?.feedback || (raw?.provider ? raw : null); }
-        catch (e) { if (e.status !== 409 && e.status !== 425) throw e; }
-      }
-      const normalized = normalizeAttempt(current, target);
-      normalized.feedback = feedback;
-      setSelectedAttempt(normalized); setCurrentFeedback(feedback); setCurrentServerAttempt(current); setStatusMessage(normalized.status);
-      setAttempts(prev => [normalized, ...prev.filter(a => a.id !== normalized.id)]);
-      setToast({ type: 'success', message: feedback ? 'Latest feedback loaded.' : `Current status: ${normalized.status || 'processing'}. Refresh again in a moment.` });
-    } catch (error) { setToast({ type: 'error', message: displayApiError(error) }); }
-    finally { setBusy(false); }
+
+    const result = normalized.feedback
+      ? normalized.feedback
+      : await api.getFeedback(attemptId);
+
+    setFeedback(result);
+    setToast("Feedback loaded successfully.");
+  } catch (error) {
+    if (error?.status === 409 || error?.status === 425) {
+      setToast(
+        "Evaluation is still in progress. Please check again shortly."
+      );
+    } else {
+      setToast(displayApiError(error));
+    }
+  } finally {
+    setLoading(false);
   }
+}
+
 
   async function openAttempt(attempt) {
     let target = attempt;
