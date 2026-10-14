@@ -276,10 +276,19 @@ async function handleSubmit() {
     const id = await ensureAttempt();
 
     if (API_ENABLED) {
-      const artifact = buildArtifact();
-      const saved = await api.saveDraft(id, revision, artifact);
+      const backendFormat = mode === 'TEXT' ? 'STRUCTURED_TEXT' : mode;
 
-      setRevision(saved?.revision ?? revision);
+const artifact = {
+  format: backendFormat,
+  sections: { ...sections },
+  notes
+};
+
+const saved = await api.saveDraft(id, revision, artifact);
+
+setRevision(
+  saved?.revision ?? saved?.attempt?.revision ?? revision + 1
+);
 
       await api.submitAttempt(id);
 
