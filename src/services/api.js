@@ -1,4 +1,3 @@
-
 const configuredBase = (import.meta.env.VITE_API_BASE_URL || '').trim();
 
 const rawBase =
@@ -7,6 +6,13 @@ const rawBase =
 
 export const API_BASE = rawBase.replace(/\/+$/, '');
 export const API_ENABLED = Boolean(API_BASE);
+
+// Uses the demo learner ID configured in the backend.
+// If needed, configure VITE_LEARNER_ID in your frontend environment.
+const LEARNER_ID = (
+  import.meta.env.VITE_LEARNER_ID ||
+  'd847c7fe-2d42-49d4-8e4d-dde0acbbfd6a'
+).trim();
 
 console.log('API_BASE:', API_BASE);
 
@@ -20,7 +26,9 @@ export function displayApiError(error) {
 
 export async function apiRequest(path, options = {}) {
   if (!API_ENABLED) {
-    throw new Error('Backend URL is not configured. Set VITE_API_BASE_URL in Vercel.');
+    throw new Error(
+      'Backend URL is not configured. Set VITE_API_BASE_URL in Vercel.'
+    );
   }
 
   let response;
@@ -31,6 +39,7 @@ export async function apiRequest(path, options = {}) {
       {
         ...options,
         headers: {
+          'X-Learner-Id': LEARNER_ID,
           ...(options.body instanceof FormData
             ? {}
             : options.body
@@ -65,12 +74,14 @@ export async function apiRequest(path, options = {}) {
   if (!response.ok) {
     const message =
       (typeof data === 'string' && data) ||
+      data?.detail ||
       data?.message ||
       data?.error ||
       `Request failed with status ${response.status}.`;
 
     const error = new Error(message);
     error.status = response.status;
+    error.data = data;
     throw error;
   }
 
@@ -91,16 +102,24 @@ export const api = {
   createAttempt(problemId, mode) {
     return apiRequest('/api/v1/attempts', {
       method: 'POST',
-      body: jsonBody({ problemId, format: mode === 'TEXT' ? 'STRUCTURED_TEXT' : mode }),
+      body: jsonBody({
+        problemId,
+        format: mode === 'TEXT' ? 'STRUCTURED_TEXT' : mode,
+      }),
     });
   },
 
   saveDraft(id, revision, artifact) {
-    return apiRequest(`/api/v1/attempts/${encodeURIComponent(id)}/draft`, {
-      method: 'PUT',
-      headers: { 'If-Match': String(revision) },
-      body: jsonBody(artifact),
-    });
+    return apiRequest(
+      `/api/v1/attempts/${encodeURIComponent(id)}/draft`,
+      {
+        method: 'PUT',
+        headers: {
+          'If-Match': String(revision),
+        },
+        body: jsonBody(artifact),
+      }
+    );
   },
 
   uploadAttachment(id, file, kind, notes = '') {
@@ -111,7 +130,10 @@ export const api = {
 
     return apiRequest(
       `/api/v1/attempts/${encodeURIComponent(id)}/attachments`,
-      { method: 'POST', body: form }
+      {
+        method: 'POST',
+        body: form,
+      }
     );
   },
 
@@ -120,18 +142,26 @@ export const api = {
   },
 
   submitAttempt(id) {
-    return apiRequest(`/api/v1/attempts/${encodeURIComponent(id)}/submit`, {
-      method: 'POST',
-    });
+    return apiRequest(
+      `/api/v1/attempts/${encodeURIComponent(id)}/submit`,
+      {
+        method: 'POST',
+      }
+    );
   },
 
   getFeedback(id) {
-    return apiRequest(`/api/v1/attempts/${encodeURIComponent(id)}/feedback`);
+    return apiRequest(
+      `/api/v1/attempts/${encodeURIComponent(id)}/feedback`
+    );
   },
 
   retryEvaluation(id) {
-    return apiRequest(`/api/v1/attempts/${encodeURIComponent(id)}/retry`, {
-      method: 'POST',
-    });
+    return apiRequest(
+      `/api/v1/attempts/${encodeURIComponent(id)}/retry`,
+      {
+        method: 'POST',
+      }
+    );
   },
 };
