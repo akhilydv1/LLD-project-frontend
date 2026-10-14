@@ -18,10 +18,20 @@ const MODE_INFO = {
 };
 
 function readStoredAttempts() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); } catch { return []; }
+  try {
+    const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
 }
 function saveStoredAttempts(items) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(items)); } catch { /* private browsing/storage limit */ }
+}
+function toArray(value) {
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value?.content)) return value.content;
+  if (Array.isArray(value?.items)) return value.items;
+  if (Array.isArray(value?.data)) return value.data;
+  return [];
 }
 function uid() {
   return globalThis.crypto?.randomUUID?.() || `local-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -100,10 +110,12 @@ function App() {
   useEffect(() => {
     if (!API_ENABLED) return;
     let cancelled = false;
-    api.listProblems().then(items => {
+    api.listProblems().then(raw => {
+      const items = toArray(raw);
       if (!cancelled && items.length) setProblems(items.map((p, i) => ({ ...fallbackProblems[i % fallbackProblems.length], ...p, id: p.id || p.problemId, title: p.title || p.name || 'Untitled problem', description: p.description || p.context || '' })));
     }).catch(error => { if (!cancelled) setApiError(displayApiError(error)); });
-    api.listAttempts().then(items => {
+    api.listAttempts().then(raw => {
+      const items = toArray(raw);
       if (!cancelled && items.length) setAttempts(items.map(item => normalizeAttempt(item)));
     }).catch(error => { if (!cancelled) setApiError(displayApiError(error)); });
     return () => { cancelled = true; };
@@ -241,17 +253,17 @@ function App() {
       let fresh = null;
       try { fresh = await api.getAttempt(id); } catch { /* draft save itself succeeded */ }
       const entry = normalizeAttempt(fresh, localAttempt(id, 'DRAFT'));
-      setAttempts(prev => [entry, ...prev.filter(a => a.id !== id)]);
+      setAttempts(prev => [entry, ...toArray(prev).filter(a => a.id !== id)]);
       setSelectedAttempt(entry);
       setCurrentServerAttempt(fresh);
-      setToast({ type: 'success', message: 'Draft saved successfully to the server.' });
+      if (!forSubmit) setToast({ type: 'success', message: 'Draft saved successfully to the server.' });
       return entry;
     }
     const entry = localAttempt(id, 'DRAFT');
-    setAttempts(prev => [entry, ...prev.filter(a => a.id !== id)]);
+    setAttempts(prev => [entry, ...toArray(prev).filter(a => a.id !== id)]);
     setSelectedAttempt(entry);
     setRevision(entry.revision);
-    setToast({ type: 'success', message: 'Draft is saved in this browser (demo mode).' });
+    if (!forSubmit) setToast({ type: 'success', message: 'Draft is saved in this browser (demo mode).' });
     return entry;
   }
 
@@ -264,72 +276,57 @@ function App() {
     finally { setBusy(false); }
   }
 
-  
+  async function handleSubmit() {
+    if (busy) return;
+    setBusy(true);
+    setApiError('');
+    try {
+      // Validates, saves draft, uploads attachments
+      const draftEntry = await persistDraft(true);
+      const id = draftEntry?.id || attemptId;
 
-async function handleSubmit() {
-  if (busy) return;
-
-  setBusy(true);
-  setApiError('');
-
-  try {
-    const id = await ensureAttempt();
-
-    if (API_ENABLED) {
-      const backendFormat = mode === 'TEXT' ? 'STRUCTURED_TEXT' : mode;
-
-const artifact = {
-  format: backendFormat,
-  sections: { ...sections },
-  notes
-};
-
-const saved = await api.saveDraft(id, revision, artifact);
-
-setRevision(
-  saved?.revision ?? saved?.attempt?.revision ?? revision + 1
-);
+      if (!API_ENABLED) {
+        setToast({ type: 'info', message: 'Live AI feedback is unavailable in demo mode.' });
+        setCurrentFeedback(null);
+        setStatusMessage('DRAFT');
+        go('feedback');
+        return;
+      }
 
       await api.submitAttempt(id);
 
       const latest = await api.getAttempt(id);
-      const normalized = normalizeAttempt(latest);
+      const normalized = normalizeAttempt(latest, draftEntry);
 
-      setAttempts((prev) => ({
-        ...prev,
-        [id]: normalized,
-      }));
+      let feedback = null;
+      if (String(normalized.status).toUpperCase() === 'COMPLETED') {
+        feedback = normalized.feedback || null;
+        if (!feedback) {
+          try {
+            const f = await api.getFeedback(id);
+            feedback = f?.feedback || (f?.provider ? f : f) || null;
+          } catch { /* feedback not ready */ }
+        }
+      }
+      normalized.feedback = feedback;
 
-      setFeedback(
-        normalized.status === "COMPLETED"
-          ? normalized.feedback ?? null
-          : null
-      );
+      setAttemptId(id);
+      setSelectedAttempt(normalized);
+      setCurrentServerAttempt(latest);
+      setCurrentFeedback(feedback);
+      setStatusMessage(normalized.status);
+      setAttempts(prev => [normalized, ...toArray(prev).filter(a => a.id !== id)]);
 
-      setToast({
-        type: 'success',
-        message: 'Your submission was received successfully. Evaluation may take some time.'
-      });
-    } else {
-      setToast({
-        type: 'info',
-        message: 'Live AI feedback is unavailable in demo mode.'
-      });
+      setToast({ type: 'success', message: 'Your submission was received successfully. Evaluation may take some time.' });
+      go('feedback');
+    } catch (error) {
+      const message = displayApiError(error);
+      setToast({ type: 'error', message });
+      if (API_ENABLED) setApiError(message);
+    } finally {
+      setBusy(false);
     }
-
-    go("feedback");
-  } catch (error) {
-    const message = displayApiError(error);
-    setToast({ type: 'error', message });
-
-    if (API_ENABLED) {
-      setApiError(message);
-    }
-  } finally {
-    setBusy(false);
   }
-}
-
 
   async function retryEvaluation(attempt) {
     const target = attempt || selectedAttempt;
@@ -346,58 +343,54 @@ setRevision(
       setCurrentServerAttempt(raw);
       setCurrentFeedback(raw?.feedback || null);
       setStatusMessage(normalized.status);
-      setAttempts(prev => [normalized, ...prev.filter(a => a.id !== normalized.id)]);
+      setAttempts(prev => [normalized, ...toArray(prev).filter(a => a.id !== normalized.id)]);
       setToast({ type: 'success', message: 'Evaluation retry requested. Refresh status in a moment.' });
     } catch (error) {
       setToast({ type: 'error', message: displayApiError(error) });
     } finally { setBusy(false); }
   }
 
- 
-async function refreshFeedback() {
-  if (!API_ENABLED || !attemptId) {
-    setToast("Live feedback is unavailable in demo mode.");
-    return;
-  }
-
-  try {
-    setLoading(true);
-
-    const latest = await api.getAttempt(attemptId);
-    const normalized = normalizeAttempt(latest);
-
-    setAttempts((prev) => ({
-      ...prev,
-      [attemptId]: normalized,
-    }));
-
-    if (normalized.status !== "COMPLETED") {
-      setFeedback(null);
-      setToast(
-        "Evaluation is still in progress. Please check again shortly."
-      );
+  async function refreshFeedback(attempt) {
+    const id = attempt?.id || selectedAttempt?.id || attemptId;
+    if (!API_ENABLED || !id) {
+      setToast({ type: 'info', message: 'Live feedback is unavailable in demo mode.' });
       return;
     }
+    setBusy(true);
+    try {
+      const latest = await api.getAttempt(id);
+      const normalized = normalizeAttempt(latest, attempt || selectedAttempt || {});
+      setCurrentServerAttempt(latest);
+      setStatusMessage(normalized.status);
 
-    const result = normalized.feedback
-      ? normalized.feedback
-      : await api.getFeedback(attemptId);
+      if (String(normalized.status).toUpperCase() !== 'COMPLETED') {
+        setSelectedAttempt(normalized);
+        setAttempts(prev => [normalized, ...toArray(prev).filter(a => a.id !== id)]);
+        setCurrentFeedback(null);
+        setToast({ type: 'info', message: 'Evaluation is still in progress. Please check again shortly.' });
+        return;
+      }
 
-    setFeedback(result);
-    setToast("Feedback loaded successfully.");
-  } catch (error) {
-    if (error?.status === 409 || error?.status === 425) {
-      setToast(
-        "Evaluation is still in progress. Please check again shortly."
-      );
-    } else {
-      setToast(displayApiError(error));
+      let result = normalized.feedback;
+      if (!result) {
+        const f = await api.getFeedback(id);
+        result = f?.feedback || f || null;
+      }
+      normalized.feedback = result;
+      setSelectedAttempt(normalized);
+      setAttempts(prev => [normalized, ...toArray(prev).filter(a => a.id !== id)]);
+      setCurrentFeedback(result);
+      setToast({ type: 'success', message: 'Feedback loaded successfully.' });
+    } catch (error) {
+      if (error?.status === 409 || error?.status === 425) {
+        setToast({ type: 'info', message: 'Evaluation is still in progress. Please check again shortly.' });
+      } else {
+        setToast({ type: 'error', message: displayApiError(error) });
+      }
+    } finally {
+      setBusy(false);
     }
-  } finally {
-    setLoading(false);
   }
-}
-
 
   async function openAttempt(attempt) {
     let target = attempt;
@@ -416,7 +409,7 @@ async function refreshFeedback() {
         target = normalizeAttempt(serverRecord, attempt);
         target.feedback = feedback;
         setCurrentServerAttempt(serverRecord);
-        setAttempts(prev => [target, ...prev.filter(a => a.id !== target.id)]);
+        setAttempts(prev => [target, ...toArray(prev).filter(a => a.id !== target.id)]);
       } catch (error) {
         setToast({ type: 'error', message: displayApiError(error) });
       } finally { setBusy(false); }
@@ -583,13 +576,7 @@ function HistoryView({ attempts, busy, onOpen, onNew }) {
   const [filter, setFilter] = useState('All');
 
   // Ensure attempts is always an array
-  const safeAttempts = Array.isArray(attempts)
-    ? attempts
-    : Array.isArray(attempts?.content)
-      ? attempts.content
-      : Array.isArray(attempts?.items)
-        ? attempts.items
-        : [];
+  const safeAttempts = toArray(attempts);
 
   const filtered = safeAttempts
     .filter(
