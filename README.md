@@ -48,7 +48,6 @@ If no `.env` file exists, the UI uses local demo mode. Drafts and attempt summar
 5. Ensure Spring Boot CORS allows the Vite origin (usually `http://localhost:5173` and, if needed, `http://localhost:5174`).
 6. The backend must implement the endpoints and payloads in `BACKEND_API_CONTRACT.md`, or you must adapt `src/services/api.js` to match the actual backend contract.
 
-**Important:** Claude is rebuilding the backend, so do not assume its endpoints automatically match. Give Claude `BACKEND_API_CONTRACT.md` and ask it to implement this contract. The browser's `X-Learner-Id` is only a local demo identity, not production authentication. Do not expose demo identity or this prototype publicly as a secured service.
 
 ## Production build check
 
