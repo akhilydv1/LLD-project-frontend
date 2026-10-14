@@ -1,4 +1,12 @@
-const rawBase = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080').trim();
+// Use the local Spring Boot server during development.
+// In production, configure VITE_API_BASE_URL with the deployed backend URL.
+const configuredBase = (
+  import.meta.env.VITE_API_BASE_URL || ''
+).trim();
+
+const rawBase =
+  configuredBase ||
+  (import.meta.env.DEV ? 'http://localhost:8080' : '');
 
 export const API_BASE = rawBase.replace(/\/+$/, '');
 export const API_ENABLED = Boolean(API_BASE);
@@ -14,7 +22,9 @@ function endpoint(path) {
 
 async function request(path, options = {}) {
   if (!API_ENABLED) {
-    throw new Error('API base URL is missing. Check your frontend .env file.');
+    throw new Error(
+      'Backend URL is not configured. Set VITE_API_BASE_URL.'
+    );
   }
 
   const headers = new Headers(options.headers || {});
@@ -38,7 +48,7 @@ async function request(path, options = {}) {
     });
   } catch (error) {
     const networkError = new Error(
-      'Backend se connect nahi ho pa raha. Spring Boot aur CORS configuration check karo.'
+      'Backend se connect nahi ho pa raha. Spring Boot, backend URL aur CORS check karo.'
     );
     networkError.cause = error;
     networkError.status = 0;
