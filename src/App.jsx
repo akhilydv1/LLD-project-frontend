@@ -578,13 +578,128 @@ function FeedbackView({ attempt, serverAttempt, feedback, busy, statusMessage, o
   </div>;
 }
 
+
 function HistoryView({ attempts, busy, onOpen, onNew }) {
   const [filter, setFilter] = useState('All');
-  const filtered = attempts.filter(a => filter === 'All' || String(a.status).toUpperCase() === filter.toUpperCase()).sort((a, b) => new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0));
-  return <div className="page-content history-page fade-in"><div className="page-title-row"><div><div className="eyebrow">YOUR PRACTICE LOG</div><h1>My attempts</h1><p>Pick up a draft or revisit a previous submission.</p></div><Button onClick={onNew} icon={Plus}>New attempt</Button></div><div className="history-toolbar"><div className="history-total"><History size={17} /><strong>{attempts.length}</strong> saved attempts</div><div className="history-filter"><span>Show</span><select value={filter} onChange={e => setFilter(e.target.value)}><option>All</option><option>DRAFT</option><option>SUBMITTED</option><option>EVALUATING</option><option>COMPLETED</option><option>FAILED</option></select><ChevronDown size={14} /></div></div>
-    {filtered.length ? <div className="history-table-wrap panel"><div className="history-table-head"><span>PROBLEM</span><span>INPUT FORMAT</span><span>LAST UPDATED</span><span>STATUS</span><span /></div>{filtered.map(attempt => <button className="history-table-row" key={attempt.id} onClick={() => onOpen(attempt)}><div className="history-problem"><div className="history-problem-icon"><GitBranch size={17} /></div><div><strong>{attempt.problemTitle || attempt.problemId || 'LLD attempt'}</strong><small>ID: {String(attempt.id).slice(0, 12)}…</small></div></div><span className="history-format">{MODE_INFO[attempt.format]?.short || attempt.format || 'Text'}</span><span className="history-date">{formatDate(attempt.updatedAt)}</span><StatusPill status={attempt.status} /><ChevronRight size={17} className="history-arrow" /></button>)}</div> : <div className="empty-state panel"><History size={30} /><h3>{attempts.length ? 'No attempts in this status' : 'Your history is empty'}</h3><p>{attempts.length ? 'Choose another filter to see your other work.' : 'Your saved drafts and submitted designs will show up here.'}</p><Button onClick={onNew} icon={Plus}>Start your first attempt</Button></div>}
-  </div>;
+
+  // Ensure attempts is always an array
+  const safeAttempts = Array.isArray(attempts)
+    ? attempts
+    : Array.isArray(attempts?.content)
+      ? attempts.content
+      : Array.isArray(attempts?.items)
+        ? attempts.items
+        : [];
+
+  const filtered = safeAttempts
+    .filter(
+      a =>
+        filter === 'All' ||
+        String(a.status).toUpperCase() === filter.toUpperCase()
+    )
+    .sort(
+      (a, b) =>
+        new Date(b.updatedAt || 0) -
+        new Date(a.updatedAt || 0)
+    );
+
+  return (
+    <div className="page-content history-page fade-in">
+      <div className="page-title-row">
+        <div>
+          <div className="eyebrow">YOUR PRACTICE LOG</div>
+          <h1>My attempts</h1>
+          <p>Pick up a draft or revisit a previous submission.</p>
+        </div>
+        <Button onClick={onNew} icon={Plus}>New attempt</Button>
+      </div>
+
+      <div className="history-toolbar">
+        <div className="history-total">
+          <History size={17} />
+          <strong>{safeAttempts.length}</strong> saved attempts
+        </div>
+
+        <div className="history-filter">
+          <span>Show</span>
+          <select
+            value={filter}
+            onChange={e => setFilter(e.target.value)}
+          >
+            <option>All</option>
+            <option>DRAFT</option>
+            <option>SUBMITTED</option>
+            <option>EVALUATING</option>
+            <option>COMPLETED</option>
+            <option>FAILED</option>
+          </select>
+          <ChevronDown size={14} />
+        </div>
+      </div>
+
+      {filtered.length ? (
+        <div className="history-table-wrap panel">
+          <div className="history-table-head">
+            <span>PROBLEM</span>
+            <span>INPUT FORMAT</span>
+            <span>LAST UPDATED</span>
+            <span>STATUS</span>
+            <span />
+          </div>
+
+          {filtered.map(attempt => (
+            <button
+              className="history-table-row"
+              key={attempt.id}
+              onClick={() => onOpen(attempt)}
+            >
+              <div className="history-problem">
+                <div className="history-problem-icon">
+                  <GitBranch size={17} />
+                </div>
+                <div>
+                  <strong>
+                    {attempt.problemTitle || attempt.problemId || 'LLD attempt'}
+                  </strong>
+                  <small>ID: {String(attempt.id).slice(0, 12)}…</small>
+                </div>
+              </div>
+
+              <span className="history-format">
+                {MODE_INFO[attempt.format]?.short || attempt.format || 'Text'}
+              </span>
+
+              <span className="history-date">
+                {formatDate(attempt.updatedAt)}
+              </span>
+
+              <StatusPill status={attempt.status} />
+              <ChevronRight size={17} className="history-arrow" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="empty-state panel">
+          <History size={30} />
+          <h3>
+            {safeAttempts.length
+              ? 'No attempts in this status'
+              : 'Your history is empty'}
+          </h3>
+          <p>
+            {safeAttempts.length
+              ? 'Choose another filter to see your other work.'
+              : 'Your saved drafts and submitted designs will show up here.'}
+          </p>
+          <Button onClick={onNew} icon={Plus}>
+            Start your first attempt
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 }
+
 
 function StatusPill({ status = 'DRAFT' }) {
   const normalized = String(status).toUpperCase();
