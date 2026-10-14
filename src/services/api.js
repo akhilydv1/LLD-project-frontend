@@ -1,10 +1,6 @@
 
-const configuredBase = (
-  import.meta.env.VITE_API_BASE_URL || ''
-).trim();
+const configuredBase = (import.meta.env.VITE_API_BASE_URL || '').trim();
 
-// Local development: localhost
-// Production: Vercel environment variable se backend URL
 const rawBase =
   configuredBase ||
   (import.meta.env.DEV ? 'http://localhost:8080' : '');
@@ -14,9 +10,6 @@ export const API_ENABLED = Boolean(API_BASE);
 
 console.log('API_BASE:', API_BASE);
 
-/**
- * API error ko readable English message mein convert karta hai.
- */
 export function displayApiError(error) {
   if (error?.status === 0 || error instanceof TypeError) {
     return 'Unable to connect to the server. Please check your internet connection and try again.';
@@ -25,68 +18,120 @@ export function displayApiError(error) {
   return error?.message || 'Something went wrong. Please try again.';
 }
 
-/**
- * Backend API request helper.
- */
 export async function apiRequest(path, options = {}) {
   if (!API_ENABLED) {
-    throw new Error(
-      'Backend URL is not configured. Please set VITE_API_BASE_URL in Vercel.'
-    );
+    throw new Error('Backend URL is not configured. Set VITE_API_BASE_URL in Vercel.');
   }
-
-  const url = `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
-
-  const headers = {
-    ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-    ...options.headers,
-  };
 
   let response;
 
   try {
-    response = await fetch(url, {
-      ...options,
-      headers,
-    });
+    response = await fetch(
+      `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`,
+      {
+        ...options,
+        headers: {
+          ...(options.body instanceof FormData
+            ? {}
+            : options.body
+              ? { 'Content-Type': 'application/json' }
+              : {}),
+          ...options.headers,
+        },
+      }
+    );
   } catch (error) {
     const networkError = new Error(
-      'Unable to connect to the backend. Please check that the server is running and try again.'
+      'Unable to connect to the backend. Please check the server URL and try again.'
     );
-
-    networkError.cause = error;
     networkError.status = 0;
-
+    networkError.cause = error;
     throw networkError;
   }
 
   const contentType = response.headers.get('content-type') || '';
   let data = null;
 
-  try {
-    if (contentType.includes('application/json')) {
-      data = await response.json();
-    } else {
-      const text = await response.text();
-      data = text || null;
+  if (response.status !== 204) {
+    try {
+      data = contentType.includes('application/json')
+        ? await response.json()
+        : await response.text();
+    } catch {
+      data = null;
     }
-  } catch {
-    data = null;
   }
 
   if (!response.ok) {
     const message =
-      typeof data === 'string'
-        ? data
-        : data?.message ||
-          data?.error ||
-          `Request failed with status ${response.status}.`;
+      (typeof data === 'string' && data) ||
+      data?.message ||
+      data?.error ||
+      `Request failed with status ${response.status}.`;
 
-    const apiError = new Error(message);
-    apiError.status = response.status;
-
-    throw apiError;
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
 
   return data;
 }
+
+const jsonBody = (value) => JSON.stringify(value);
+
+export const api = {
+  listProblems() {
+    return apiRequest('/api/v1/problems');
+  },
+
+  listAttempts() {
+    return apiRequest('/api/v1/attempts');
+  },
+
+  createAttempt(problemId, mode) {
+    return apiRequest('/api/v1/attempts', {
+      method: 'POST',
+      body: jsonBody({ problemId, format: mode === 'TEXT' ? 'STRUCTURED_TEXT' : mode }),
+    });
+  },
+
+  saveDraft(id, revision, artifact) {
+    return apiRequest(`/api/v1/attempts/${encodeURIComponent(id)}/draft`, {
+      method: 'PUT',
+      headers: { 'If-Match': String(revision) },
+      body: jsonBody(artifact),
+    });
+  },
+
+  uploadAttachment(id, file, kind, notes = '') {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('kind', kind);
+    form.append('notes', notes);
+
+    return apiRequest(
+      `/api/v1/attempts/${encodeURIComponent(id)}/attachments`,
+      { method: 'POST', body: form }
+    );
+  },
+
+  getAttempt(id) {
+    return apiRequest(`/api/v1/attempts/${encodeURIComponent(id)}`);
+  },
+
+  submitAttempt(id) {
+    return apiRequest(`/api/v1/attempts/${encodeURIComponent(id)}/submit`, {
+      method: 'POST',
+    });
+  },
+
+  getFeedback(id) {
+    return apiRequest(`/api/v1/attempts/${encodeURIComponent(id)}/feedback`);
+  },
+
+  retryEvaluation(id) {
+    return apiRequest(`/api/v1/attempts/${encodeURIComponent(id)}/retry`, {
+      method: 'POST',
+    });
+  },
+};
