@@ -265,10 +265,14 @@ function App() {
   }
 
   
-async function handleSubmit() {
-  try {
-    setLoading(true);
 
+async function handleSubmit() {
+  if (busy) return;
+
+  setBusy(true);
+  setApiError('');
+
+  try {
     const id = await ensureAttempt();
 
     if (API_ENABLED) {
@@ -293,22 +297,30 @@ async function handleSubmit() {
           : null
       );
 
-      setToast(
-        "Your submission was received successfully. Evaluation may take some time."
-      );
+      setToast({
+        type: 'success',
+        message: 'Your submission was received successfully. Evaluation may take some time.'
+      });
     } else {
-      setToast(
-        "Live AI feedback is unavailable in demo mode."
-      );
+      setToast({
+        type: 'info',
+        message: 'Live AI feedback is unavailable in demo mode.'
+      });
     }
 
     go("feedback");
   } catch (error) {
-    setToast(displayApiError(error));
+    const message = displayApiError(error);
+    setToast({ type: 'error', message });
+
+    if (API_ENABLED) {
+      setApiError(message);
+    }
   } finally {
-    setLoading(false);
+    setBusy(false);
   }
 }
+
 
   async function retryEvaluation(attempt) {
     const target = attempt || selectedAttempt;
