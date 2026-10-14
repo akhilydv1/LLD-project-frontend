@@ -1,6 +1,9 @@
 # DesignLoop — LLD Practice Frontend
 ## Project Repositories
 **Fully deployed-working project:** https://lld-project-frontend.vercel.app/
+## ⚠️ Known Limitation: AI Evaluation
+
+DesignLoop's AI feedback is powered by the Google Gemini API, running on a **free-tier API key**. The free tier has limited capacity, so evaluation may occasionally fail with an `HTTP 503 (Service Unavailable)` or rate-limit error when Google's servers are busy. This is a limitation of the free Gemini service, not a bug in the application. Your submission is always saved safely, and you can click **Retry evaluation** to try again. With a paid API key, evaluation would be far more reliable.
 
 - **Frontend (React + Vite):** https://github.com/akhilydv1/LLD-project-frontend
 - **Backend (Spring Boot):** https://github.com/akhilydv1/LLD-backendfinal
