@@ -1,5 +1,6 @@
 # DesignLoop — LLD Practice Frontend
 ## Project Repositories
+**Fully deployed-working project:** https://lld-project-frontend.vercel.app/
 
 - **Frontend (React + Vite):** https://github.com/akhilydv1/LLD-project-frontend
 - **Backend (Spring Boot):** https://github.com/akhilydv1/LLD-backendfinal
